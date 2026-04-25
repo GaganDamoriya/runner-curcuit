@@ -1,0 +1,62 @@
+{
+  "model": "claude-sonnet-4-5",
+  "permissions": {
+    "allow": [
+      "npm run lint",
+      "npm run build",
+      "npm run dev",
+      "git status",
+      "git diff",
+      "git add",
+      "git commit",
+      "git checkout",
+      "git push"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git branch --show-current 2>/dev/null); if [ \"$branch\" = \"main\" ] || [ \"$branch\" = \"master\" ]; then echo '{\"block\": true, \"message\": \"Cannot edit files on main branch. Run: git checkout -b feat/your-feature-name\"}' >&2; exit 2; fi",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run lint --silent 2>&1 | head -30",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(echo '$TOOL_INPUT' | grep -o '\"path\":\"[^\"]*\"' | head -1 | cut -d'\"' -f4); if echo \"$file\" | grep -qE '\\.(ts|tsx)$'; then npx tsc --noEmit 2>&1 | head -20; fi",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "A file was just created or modified. If it is a new file in src/, app/api/, or app/components/ — trigger the readme-agent to update README.md project structure, API routes, and env vars sections.",
+            "agent": "readme-agent"
+          }
+        ]
+      }
+    ]
+  }
+}
