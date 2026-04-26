@@ -16,16 +16,16 @@ export function calculateRouteMetrics(
   const elevationGain = 0; // TODO: Calculate from elevation data
   const scenicScore = 50; // TODO: Calculate from waytype data
 
-  // Overall score weighted by importance
+  // Overall score weighted by importance - HEAVILY penalize turns!
   const distanceScore = Math.max(0, 100 - distanceAccuracy);
-  const turnScore = Math.max(0, 100 - turnCount * 2); // Penalty: 2 points per turn
+  const turnScore = Math.max(0, 100 - turnCount * 5); // Penalty: 5 points per turn (was 2)
   const surfaceScore = route.surfaceScore;
 
   const overallScore =
-    0.4 * distanceScore +
-    0.3 * turnScore +
-    0.2 * surfaceScore +
-    0.1 * scenicScore;
+    0.3 * distanceScore +
+    0.5 * turnScore +      // Increased from 0.3 to 0.5 - turns now MOST important!
+    0.15 * surfaceScore +  // Decreased from 0.2
+    0.05 * scenicScore;    // Decreased from 0.1
 
   return {
     distanceKm: route.distanceKm,
@@ -48,7 +48,7 @@ function calculateDistanceAccuracy(
 
 function countSignificantTurns(
   coordinates: [number, number][],
-  angleThreshold: number = 45
+  angleThreshold: number = 60 // Increased from 45° - only count sharper turns
 ): number {
   if (coordinates.length < 3) return 0;
 

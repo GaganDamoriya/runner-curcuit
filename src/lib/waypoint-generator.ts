@@ -11,6 +11,14 @@ export function generateWaypointStrategies(
 ): WaypointStrategy[] {
   const strategies: WaypointStrategy[] = [];
 
+  // For point-to-point: Use straight-line strategy (minimal turns!)
+  if (preferences.routeType === 'point-to-point') {
+    strategies.push(generateStraightLine(startCoord, targetDistanceKm));
+    return strategies; // Only use straight-line for point-to-point
+  }
+
+  // For loops:
+
   // Strategy 1: Park Loop (if park nearby)
   const nearbyPark = osmFeatures.find(
     (f) => f.type === 'park' && f.perimeter && f.perimeter > 0.5
@@ -36,6 +44,23 @@ export function generateWaypointStrategies(
   }
 
   return strategies;
+}
+
+function generateStraightLine(
+  startCoord: [number, number],
+  targetDistanceKm: number
+): WaypointStrategy {
+  // For point-to-point: Just go straight east (can be any direction)
+  // This creates the absolute minimum turns - just start and end!
+  const endPoint = destination(point(startCoord), targetDistanceKm, 90).geometry
+    .coordinates as [number, number];
+
+  return {
+    name: 'Straight Line',
+    description: 'Direct point-to-point route',
+    waypoints: [startCoord, endPoint],
+    reasoning: 'Minimal waypoints (just 2) create the straightest possible route with almost zero turns. Perfect for uninterrupted running.',
+  };
 }
 
 function generateParkLoopStrategy(
@@ -101,12 +126,12 @@ function generateNeighborhoodCircuit(
   startCoord: [number, number],
   targetDistanceKm: number
 ): WaypointStrategy {
-  // Create a square/hexagon pattern around start point
-  const radiusKm = targetDistanceKm / 4; // Rough approximation
+  // Create a square pattern (4 waypoints = minimal turns)
+  const radiusKm = targetDistanceKm / 4;
   const waypoints: [number, number][] = [startCoord];
 
-  // Hexagon pattern (6 sides = smoother than square)
-  const angles = [0, 60, 120, 180, 240, 300];
+  // Square pattern (4 corners = minimal turns for loops)
+  const angles = [45, 135, 225, 315]; // Diagonal square for smoother roads
 
   for (const angle of angles) {
     const wp = destination(point(startCoord), radiusKm, angle).geometry.coordinates as [number, number];
@@ -117,9 +142,9 @@ function generateNeighborhoodCircuit(
 
   return {
     name: 'Neighborhood Circuit',
-    description: 'Hexagonal loop through local streets',
+    description: 'Square loop with minimal turns',
     waypoints,
-    reasoning: `Hexagon pattern provides balanced route with ${angles.length} waypoints, reducing sharp turns while covering target distance through residential areas.`,
+    reasoning: `Square pattern with only 4 waypoints minimizes turns while maintaining target distance. Diagonal orientation avoids grid-aligned roads.`,
   };
 }
 
@@ -128,22 +153,22 @@ function generateSpiralPattern(
   targetDistanceKm: number
 ): WaypointStrategy {
   const waypoints: [number, number][] = [startCoord];
-  const spiralTurns = 6;
+  const spiralTurns = 3; // Reduced from 6 to minimize turns
   let currentRadius = targetDistanceKm / (spiralTurns * 2);
 
   for (let turn = 0; turn < spiralTurns; turn++) {
-    const angle = turn * 60; // 60° increments
+    const angle = turn * 120; // 120° increments (fewer, wider turns)
     const wp = destination(point(startCoord), currentRadius, angle).geometry.coordinates as [number, number];
     waypoints.push(wp);
-    currentRadius += targetDistanceKm / (spiralTurns * 3); // Gradually expand
+    currentRadius += targetDistanceKm / (spiralTurns * 2);
   }
 
   waypoints.push(startCoord); // Return to start
 
   return {
     name: 'Spiral Explorer',
-    description: 'Expanding spiral through neighborhood',
+    description: 'Wide spiral with minimal turns',
     waypoints,
-    reasoning: `Spiral pattern allows exploration of surrounding area while maintaining general direction back to start. Good for discovering new routes.`,
+    reasoning: `Minimal spiral pattern (3 waypoints) creates long straightaways with only 3 major turns, ideal for uninterrupted running.`,
   };
 }

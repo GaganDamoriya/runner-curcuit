@@ -104,12 +104,12 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Route Optimizer] Step 4: Best route selected: ${bestRoute.strategy.name} (score: ${bestRoute.metrics.overallScore})`);
 
-    // Step 5: Simplify route to reduce micro-turns
-    console.log('[Route Optimizer] Step 5: Simplifying route...');
+    // Step 5: Aggressively simplify route to reduce turns
+    console.log('[Route Optimizer] Step 5: Simplifying route (aggressive turn reduction)...');
     const originalCoordCount = bestRoute.route.coordinates.length;
-    const simplifiedCoords = simplifyRoute(bestRoute.route.coordinates, 0.0001);
+    const simplifiedCoords = simplifyRoute(bestRoute.route.coordinates, 0.0005); // Higher tolerance = fewer turns
     bestRoute.route.coordinates = simplifiedCoords;
-    console.log(`[Route Optimizer] Simplified: ${originalCoordCount} → ${simplifiedCoords.length} points`);
+    console.log(`[Route Optimizer] Simplified: ${originalCoordCount} → ${simplifiedCoords.length} points (-${Math.round((1 - simplifiedCoords.length/originalCoordCount) * 100)}%)`);
 
     return NextResponse.json<GenerateRouteResponse>({
       success: true,

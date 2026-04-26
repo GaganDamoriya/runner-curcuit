@@ -3,7 +3,7 @@ import { lineString } from '@turf/helpers';
 
 export function simplifyRoute(
   coordinates: [number, number][],
-  tolerance: number = 0.0001
+  tolerance: number = 0.0003
 ): [number, number][] {
   if (coordinates.length < 3) return coordinates;
 
