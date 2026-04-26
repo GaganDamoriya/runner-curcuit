@@ -11,28 +11,13 @@ export async function analyzeNearbyPOIs(
   const [lng, lat] = startCoord;
   const radiusMeters = radiusKm * 1000;
 
-  // Overpass QL query for running-friendly POIs
-  const query = `
-    [out:json][timeout:25];
-    (
-      way["leisure"="park"](around:${radiusMeters},${lat},${lng});
-      way["leisure"="track"]["sport"="running"](around:${radiusMeters},${lat},${lng});
-      way["highway"="path"](around:${radiusMeters},${lat},${lng});
-      way["highway"="footway"](around:${radiusMeters},${lat},${lng});
-      way["natural"="water"](around:${radiusMeters},${lat},${lng});
-      relation["leisure"="park"](around:${radiusMeters},${lat},${lng});
-    );
-    out geom;
-  `;
+  // Overpass QL query for running-friendly POIs (simplified to avoid 406)
+  const query = `[out:json][timeout:25];(way["leisure"="park"](around:${radiusMeters},${lat},${lng});way["highway"~"path|footway"](around:${radiusMeters},${lat},${lng}););out geom;`;
 
   try {
     const response = await fetch(OVERPASS_API, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Accept': 'application/json',
-      },
-      body: `data=${encodeURIComponent(query)}`,
+      body: query,
     });
 
     if (!response.ok) {

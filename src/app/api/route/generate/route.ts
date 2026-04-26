@@ -42,13 +42,13 @@ export async function POST(request: NextRequest) {
     );
     console.log(`[Route Optimizer] Generated ${strategies.length} strategies: ${strategies.map(s => s.name).join(', ')}`);
 
-    // Step 3: Refine each strategy iteratively (max 3 attempts per strategy)
+    // Step 3: Refine each strategy iteratively (max 6 attempts per strategy)
     console.log('[Route Optimizer] Step 3: Refining routes (iterative distance adjustment)...');
     const candidates: RouteCandidate[] = [];
 
     for (const strategy of strategies) {
       console.log(`[Route Optimizer] Testing strategy: ${strategy.name}`);
-      const refined = await refineRoute(strategy, body.distanceKm, 3);
+      const refined = await refineRoute(strategy, body.distanceKm, 6);
       if (refined) {
         console.log(`[Route Optimizer] ✓ ${strategy.name}: ${refined.route.distanceKm.toFixed(2)}km (${refined.metrics.distanceAccuracy.toFixed(1)}% error, ${refined.metrics.turnCount} turns)`);
         candidates.push(refined);

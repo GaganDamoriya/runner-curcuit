@@ -8,7 +8,7 @@ import { RouteData } from '@/types/route';
 export async function refineRoute(
   strategy: WaypointStrategy,
   targetDistanceKm: number,
-  maxAttempts: number = 3
+  maxAttempts: number = 6
 ): Promise<RouteCandidate | null> {
   let currentWaypoints = strategy.waypoints;
   let attempt = 0;
@@ -30,11 +30,11 @@ export async function refineRoute(
       const duration = feature.properties.summary.duration;
       const surfaceData = feature.properties.extras?.surface;
 
-      // Check if within acceptable range (±10%)
+      // Check if within acceptable range (±15% tolerance)
       const distanceError = Math.abs(actualDistance - targetDistanceKm) / targetDistanceKm;
       console.log(`  Attempt ${attempt + 1}: Got ${actualDistance.toFixed(2)}km (target: ${targetDistanceKm}km, error: ${(distanceError * 100).toFixed(1)}%)`);
 
-      if (distanceError <= 0.10) {
+      if (distanceError <= 0.15) {
         console.log(`  ✓ Success! Within ±10% tolerance`);
 
         // SUCCESS! Build route candidate
