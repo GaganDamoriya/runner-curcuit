@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { GenerateRouteRequest } from '@/types/api';
+import { GenerateRouteRequest, GenerateRouteResponse } from '@/types/api';
 
 const PRESET_DISTANCES = [5, 10, 21, 42];
 
@@ -21,6 +21,7 @@ export function RouteSidebar() {
   const [cityPreference, setCityPreference] = useState<
     'stay-in-city' | 'can-leave-city'
   >('stay-in-city');
+  const [routeResponse, setRouteResponse] = useState<GenerateRouteResponse | null>(null);
 
   const setRoute = useRouteStore((state) => state.setRoute);
   const startCoord = useRouteStore((state) => state.startCoord);
@@ -52,8 +53,9 @@ export function RouteSidebar() {
 
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: GenerateRouteResponse) => {
       setRoute(data.data);
+      setRouteResponse(data);
     },
   });
 
@@ -187,7 +189,13 @@ export function RouteSidebar() {
         )}
 
         {/* Route Stats */}
-        {route && <RouteStats route={route} />}
+        {route && routeResponse && (
+          <RouteStats
+            route={route}
+            metrics={routeResponse.metrics}
+            strategyUsed={routeResponse.strategyUsed}
+          />
+        )}
       </div>
     </div>
   );

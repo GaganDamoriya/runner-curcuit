@@ -1,7 +1,8 @@
 'use client';
 
-import { Download, Navigation, Clock, Route } from 'lucide-react';
+import { Download, Navigation, Clock, Route, TrendingUp, Navigation2 } from 'lucide-react';
 import { RouteData } from '@/types/route';
+import { RouteMetrics } from '@/types/route-optimizer';
 import { geojsonToGpx, downloadGpx, googleMapsUrl } from '@/lib/gpx';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,9 +10,11 @@ import { Badge } from '@/components/ui/badge';
 
 interface RouteStatsProps {
   route: RouteData;
+  metrics?: RouteMetrics;
+  strategyUsed?: string;
 }
 
-export function RouteStats({ route }: RouteStatsProps) {
+export function RouteStats({ route, metrics, strategyUsed }: RouteStatsProps) {
   const handleGpxDownload = () => {
     const gpx = geojsonToGpx(
       route.coordinates,
@@ -41,6 +44,11 @@ export function RouteStats({ route }: RouteStatsProps) {
         <CardTitle className="text-lg flex items-center gap-2">
           <Route className="h-5 w-5 text-blue-600" />
           Route Details
+          {strategyUsed && (
+            <Badge variant="outline" className="ml-auto text-xs">
+              {strategyUsed}
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -67,6 +75,30 @@ export function RouteStats({ route }: RouteStatsProps) {
           </div>
         </div>
 
+        {/* Optimizer Metrics */}
+        {metrics && (
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t">
+            <div className="space-y-1">
+              <div className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                <TrendingUp className="h-3 w-3" />
+                Accuracy
+              </div>
+              <div className="text-lg font-semibold">
+                ±{metrics.distanceAccuracy.toFixed(1)}%
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                <Navigation2 className="h-3 w-3" />
+                Turns
+              </div>
+              <div className="text-lg font-semibold">
+                {metrics.turnCount}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Surface Quality */}
         <div className="space-y-2">
           <div className="text-xs text-gray-500 uppercase tracking-wide">
@@ -84,6 +116,18 @@ export function RouteStats({ route }: RouteStatsProps) {
             </Badge>
           </div>
         </div>
+
+        {/* Overall Score */}
+        {metrics && (
+          <div className="pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Route Score</span>
+              <Badge className="text-sm">
+                {metrics.overallScore}/100
+              </Badge>
+            </div>
+          </div>
+        )}
 
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-2 pt-2">
