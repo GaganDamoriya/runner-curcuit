@@ -16,9 +16,11 @@ export async function refineRoute(
   while (attempt < maxAttempts) {
     try {
       // Test current waypoints with ORS
+      console.log(`  Attempt ${attempt + 1}: Testing ${currentWaypoints.length} waypoints...`);
       const orsResponse = await callORSWithWaypoints(currentWaypoints);
 
       if (!orsResponse) {
+        console.log(`  Attempt ${attempt + 1}: ORS call failed, retrying...`);
         attempt++;
         continue;
       }
@@ -30,8 +32,11 @@ export async function refineRoute(
 
       // Check if within acceptable range (±10%)
       const distanceError = Math.abs(actualDistance - targetDistanceKm) / targetDistanceKm;
+      console.log(`  Attempt ${attempt + 1}: Got ${actualDistance.toFixed(2)}km (target: ${targetDistanceKm}km, error: ${(distanceError * 100).toFixed(1)}%)`);
 
       if (distanceError <= 0.10) {
+        console.log(`  ✓ Success! Within ±10% tolerance`);
+
         // SUCCESS! Build route candidate
         const route: RouteData = {
           geojson: feature.geometry,
@@ -55,15 +60,17 @@ export async function refineRoute(
 
       // Adjust waypoints based on distance error
       const scaleFactor = targetDistanceKm / actualDistance;
+      console.log(`  Adjusting waypoints: scale factor ${scaleFactor.toFixed(2)}x`);
       currentWaypoints = scaleWaypoints(currentWaypoints, scaleFactor);
 
       attempt++;
-    } catch {
-      console.error(`Refinement attempt ${attempt + 1} failed`);
+    } catch (err) {
+      console.error(`  Refinement attempt ${attempt + 1} failed:`, err);
       attempt++;
     }
   }
 
+  console.log(`  ✗ Failed to converge after ${maxAttempts} attempts`);
   return null; // Failed to converge
 }
 
@@ -137,11 +144,14 @@ async function callORSWithWaypoints(waypoints: [number, number][]) {
     );
 
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`    ORS API error ${response.status}:`, errorText.substring(0, 200));
       return null;
     }
 
     return response.json();
   } catch (error) {
+    console.error('    ORS fetch error:', error);
     return null;
   }
 }

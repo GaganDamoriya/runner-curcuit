@@ -58,14 +58,43 @@ export async function POST(request: NextRequest) {
     }
 
     if (candidates.length === 0) {
-      return NextResponse.json<GenerateRouteError>(
-        {
-          success: false,
-          error: 'Could not generate accurate route. Try a different distance or location.',
-          code: 'NO_ACCURATE_ROUTE',
-        },
-        { status: 404 }
-      );
+      // Fallback to simple geometric pattern if optimizer fails
+      console.log('[Route Optimizer] All strategies failed, using fallback geometric pattern...');
+
+      const { generateLoop } = await import('@/lib/ors');
+      try {
+        const orsResponse = await generateLoop(body.startCoord, body.distanceKm);
+        const feature = orsResponse.features[0];
+        const { distance, duration } = feature.properties.summary;
+        const surfaceData = feature.properties.extras?.surface;
+        const { calculateSurfaceScore } = await import('@/lib/ors');
+
+        const fallbackRoute = {
+          geojson: feature.geometry,
+          distanceKm: distance,
+          durationMin: duration / 60,
+          surfaceScore: calculateSurfaceScore(surfaceData),
+          coordinates: feature.geometry.coordinates as [number, number][],
+        };
+
+        console.log('[Route Optimizer] Fallback route generated:', distance.toFixed(2), 'km');
+
+        return NextResponse.json<GenerateRouteResponse>({
+          success: true,
+          data: fallbackRoute,
+          strategyUsed: 'Geometric Fallback',
+        });
+      } catch (fallbackError) {
+        console.error('[Route Optimizer] Fallback also failed:', fallbackError);
+        return NextResponse.json<GenerateRouteError>(
+          {
+            success: false,
+            error: 'Could not generate route. Please check your API keys and try again.',
+            code: 'NO_ACCURATE_ROUTE',
+          },
+          { status: 404 }
+        );
+      }
     }
 
     // Step 4: Select best route (highest overall score)

@@ -28,12 +28,15 @@ export async function analyzeNearbyPOIs(
   try {
     const response = await fetch(OVERPASS_API, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
       body: `data=${encodeURIComponent(query)}`,
     });
 
     if (!response.ok) {
-      console.error('Overpass API error:', response.status);
+      console.error('Overpass API error:', response.status, await response.text());
       return [];
     }
 
