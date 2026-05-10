@@ -27,17 +27,22 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Route Optimizer] Generating ${body.distanceKm}km ${body.routeType} from [${body.startCoord}]`);
 
-    // Step 1: Analyze nearby running-friendly POIs (parks, trails, etc.)
-    console.log('[Route Optimizer] Step 1: Analyzing nearby POIs via OSM...');
+    // Step 1: Analyze nearby POIs AND water bodies
+    console.log('[Route Optimizer] Step 1: Analyzing nearby POIs and hazards...');
     const osmFeatures = await analyzeNearbyPOIs(body.startCoord, 3);
-    console.log(`[Route Optimizer] Found ${osmFeatures.length} nearby POIs`);
 
-    // Step 2: Generate smart waypoint strategies based on POIs
+    // Separate water bodies from safe features
+    const waterFeatures = osmFeatures.filter((f) => f.type === 'water');
+    const safeFeatures = osmFeatures.filter((f) => f.type !== 'water');
+
+    console.log(`[Route Optimizer] Found ${safeFeatures.length} POIs, ${waterFeatures.length} water bodies to avoid`);
+
+    // Step 2: Generate smart waypoint strategies (using safe features only)
     console.log('[Route Optimizer] Step 2: Generating waypoint strategies...');
     const strategies = generateWaypointStrategies(
       body.startCoord,
       body.distanceKm,
-      osmFeatures,
+      safeFeatures,
       body
     );
     console.log(`[Route Optimizer] Generated ${strategies.length} strategies: ${strategies.map(s => s.name).join(', ')}`);
@@ -48,9 +53,10 @@ export async function POST(request: NextRequest) {
 
     for (const strategy of strategies) {
       console.log(`[Route Optimizer] Testing strategy: ${strategy.name}`);
-      const refined = await refineRoute(strategy, body.distanceKm, 6);
+      const refined = await refineRoute(strategy, body.distanceKm, 6, waterFeatures);
       if (refined) {
-        console.log(`[Route Optimizer] ✓ ${strategy.name}: ${refined.route.distanceKm.toFixed(2)}km (${refined.metrics.distanceAccuracy.toFixed(1)}% error, ${refined.metrics.turnCount} turns)`);
+        const waterInfo = refined.metrics.waterProximity ? `, water penalty: ${refined.metrics.waterProximity}` : '';
+        console.log(`[Route Optimizer] ✓ ${strategy.name}: ${refined.route.distanceKm.toFixed(2)}km (${refined.metrics.distanceAccuracy.toFixed(1)}% error, ${refined.metrics.turnCount} turns${waterInfo})`);
         candidates.push(refined);
       } else {
         console.log(`[Route Optimizer] ✗ ${strategy.name}: Failed to converge`);
@@ -63,18 +69,28 @@ export async function POST(request: NextRequest) {
 
       const { generateLoop } = await import('@/lib/ors');
       try {
-        const orsResponse = await generateLoop(body.startCoord, body.distanceKm);
+        // Convert water features to avoidance polygons
+        const avoidPolygons = waterFeatures
+          .filter((f) => f.coordinates && f.coordinates.length >= 3)
+          .map((f) => f.coordinates!);
+
+        const orsResponse = await generateLoop(body.startCoord, body.distanceKm, avoidPolygons);
         const feature = orsResponse.features[0];
         const { distance, duration } = feature.properties.summary;
         const surfaceData = feature.properties.extras?.surface;
-        const { calculateSurfaceScore } = await import('@/lib/ors');
+        const elevationData = feature.properties.extras?.elevation;
+        const { calculateSurfaceScore, calculateElevationMetrics } = await import('@/lib/ors');
 
+        const elevationMetrics = calculateElevationMetrics(elevationData);
         const fallbackRoute = {
           geojson: feature.geometry,
           distanceKm: distance,
           durationMin: duration / 60,
           surfaceScore: calculateSurfaceScore(surfaceData),
           coordinates: feature.geometry.coordinates as [number, number][],
+          elevationGain: elevationMetrics.elevationGain,
+          maxElevation: elevationMetrics.maxElevation,
+          minElevation: elevationMetrics.minElevation,
         };
 
         console.log('[Route Optimizer] Fallback route generated:', distance.toFixed(2), 'km');

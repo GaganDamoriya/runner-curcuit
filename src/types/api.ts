@@ -1,5 +1,6 @@
 import { RouteData } from './route';
 import { RouteMetrics } from './route-optimizer';
+import { WeatherAdviceResponse } from './weather';
 
 export interface GenerateRouteRequest {
   distanceKm: number;
@@ -19,4 +20,22 @@ export interface GenerateRouteError {
   success: false;
   error: string;
   code?: 'RATE_LIMIT' | 'NO_ROUTE_FOUND' | 'INVALID_REQUEST' | 'SERVER_ERROR' | 'NO_ACCURATE_ROUTE';
+}
+
+// Weather API types
+export interface WeatherAdviceRequest {
+  lat: number;
+  lng: number;
+  timeRangeHours?: number; // Default: 48
+}
+
+export interface WeatherAdviceSuccessResponse {
+  success: true;
+  data: WeatherAdviceResponse;
+}
+
+export interface WeatherAdviceError {
+  success: false;
+  error: string;
+  code?: 'RATE_LIMIT' | 'INVALID_REQUEST' | 'SERVER_ERROR' | 'API_KEY_MISSING';
 }

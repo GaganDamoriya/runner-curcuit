@@ -11,6 +11,13 @@ interface ORSRequest {
   instructions: boolean;
   elevation: boolean;
   extra_info: string[];
+  options?: {
+    avoid_features?: string[];
+    avoid_polygons?: {
+      type: 'Polygon';
+      coordinates: [number, number][][];
+    };
+  };
 }
 
 interface SurfaceSegment {
@@ -24,6 +31,17 @@ interface SurfaceData {
   summary: SurfaceSegment[];
 }
 
+interface ElevationSegment {
+  value: number;    // elevation in meters
+  distance: number; // distance along route
+  amount: number;   // percentage
+}
+
+interface ElevationData {
+  values: Array<[number, number, number]>; // [startIndex, endIndex, elevation]
+  summary: ElevationSegment[];
+}
+
 interface ORSResponse {
   features: Array<{
     geometry: LineString;
@@ -34,6 +52,7 @@ interface ORSResponse {
       };
       extras?: {
         surface?: SurfaceData;
+        elevation?: ElevationData;
       };
     };
   }>;
@@ -41,7 +60,8 @@ interface ORSResponse {
 
 export async function generateLoop(
   startCoord: [number, number],
-  targetDistanceKm: number
+  targetDistanceKm: number,
+  avoidPolygons?: [number, number][][]
 ): Promise<ORSResponse> {
   const [lng, lat] = startCoord;
   const radiusKm = targetDistanceKm / 4;
@@ -55,7 +75,7 @@ export async function generateLoop(
     [lng, lat],
   ];
 
-  return callORS(waypoints);
+  return callORS(waypoints, avoidPolygons);
 }
 
 export async function generatePointToPoint(
@@ -68,7 +88,10 @@ export async function generatePointToPoint(
   return callORS([startCoord, endPoint]);
 }
 
-async function callORS(coordinates: [number, number][]): Promise<ORSResponse> {
+async function callORS(
+  coordinates: [number, number][],
+  avoidPolygons?: [number, number][][]
+): Promise<ORSResponse> {
   const requestBody: ORSRequest = {
     coordinates,
     preference: 'recommended',
@@ -78,6 +101,17 @@ async function callORS(coordinates: [number, number][]): Promise<ORSResponse> {
     elevation: true,
     extra_info: ['surface', 'waytype', 'steepness'],
   };
+
+  // Add avoidance constraints if water bodies detected
+  if (avoidPolygons && avoidPolygons.length > 0) {
+    requestBody.options = {
+      avoid_features: ['ferries'], // Don't cross water via ferry
+      avoid_polygons: {
+        type: 'Polygon',
+        coordinates: avoidPolygons,
+      },
+    };
+  }
 
   const response = await fetch(
     `${ORS_BASE_URL}/v2/directions/foot-walking/geojson`,
@@ -131,6 +165,50 @@ export function calculateSurfaceScore(surfaceData?: SurfaceData): number {
   });
 
   return totalDistance > 0 ? Math.round(weightedScore / totalDistance) : 50;
+}
+
+export function calculateElevationMetrics(
+  elevationData?: ElevationData
+): {
+  elevationGain: number;
+  maxElevation: number;
+  minElevation: number;
+} {
+  if (!elevationData?.summary || elevationData.summary.length === 0) {
+    return {
+      elevationGain: 0,
+      maxElevation: 0,
+      minElevation: 0,
+    };
+  }
+
+  let elevationGain = 0;
+  let maxElevation = -Infinity;
+  let minElevation = Infinity;
+  let previousElevation: number | null = null;
+
+  elevationData.summary.forEach((segment) => {
+    const elevation = segment.value;
+
+    // Track min/max
+    maxElevation = Math.max(maxElevation, elevation);
+    minElevation = Math.min(minElevation, elevation);
+
+    // Calculate cumulative gain (only positive differences)
+    if (previousElevation !== null) {
+      const diff = elevation - previousElevation;
+      if (diff > 0) {
+        elevationGain += diff;
+      }
+    }
+    previousElevation = elevation;
+  });
+
+  return {
+    elevationGain: Math.round(elevationGain),
+    maxElevation: Math.round(maxElevation),
+    minElevation: Math.round(minElevation),
+  };
 }
 
 function calculateWaypoint(

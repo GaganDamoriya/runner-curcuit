@@ -5,6 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import bbox from '@turf/bbox';
 import { useRouteStore } from '@/store/route-store';
 import { Button } from '@/components/ui/button';
+import { FloatingLocationSearch } from '@/components/FloatingLocationSearch';
 import { Crosshair, Loader2 } from 'lucide-react';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -63,9 +64,9 @@ export function MapView() {
       startMarkerRef.current.remove();
     }
 
-    // Create new marker
+    // Create new marker with primary color (fallback to blue since mapbox doesn't support oklch)
     const marker = new mapboxgl.Marker({
-      color: '#22c55e',
+      color: '#3b82f6',
       draggable: true,
     })
       .setLngLat(startCoord)
@@ -111,13 +112,22 @@ export function MapView() {
         paint: {
           'line-color': '#3b82f6',
           'line-width': 4,
-          'line-opacity': 0.9,
+          'line-opacity': 0.8,
         },
       });
 
       const bounds = bbox(route.geojson);
+
+      // Responsive padding: account for wider sidebar (28rem = 448px)
+      const isMobile = window.innerWidth < 640; // Tailwind 'sm' breakpoint
       map.fitBounds(bounds as [number, number, number, number], {
-        padding: { top: 60, bottom: 60, left: 400, right: 60 },
+        padding: {
+          top: 60,
+          bottom: 60,
+          left: isMobile ? 20 : 480, // 448px sidebar + 32px margin
+          right: 60,
+        },
+        maxZoom: 14,
       });
     };
 
@@ -154,13 +164,18 @@ export function MapView() {
     <>
       <div ref={mapContainerRef} className="absolute inset-0 w-full h-full" />
 
+      {/* Floating Search Bar */}
+      <FloatingLocationSearch />
+
       {/* Location Button */}
       <Button
         onClick={getUserLocation}
         disabled={isLocating}
+        variant="default"
         size="icon"
-        className="absolute bottom-6 right-6 z-10 h-12 w-12 rounded-full shadow-lg"
+        className="absolute bottom-6 right-6 z-10 shadow-lg hover:shadow-xl transition-all duration-200 animate-in"
         title="Use my location"
+        aria-label="Use my location"
       >
         {isLocating ? (
           <Loader2 className="h-5 w-5 animate-spin" />

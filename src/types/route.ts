@@ -6,6 +6,9 @@ export interface RouteData {
   durationMin: number;
   surfaceScore: number;
   coordinates: [number, number][];
+  elevationGain: number;  // Total meters climbed
+  maxElevation: number;   // Peak elevation
+  minElevation: number;   // Lowest point
 }
 
 export interface RoutePreferences {

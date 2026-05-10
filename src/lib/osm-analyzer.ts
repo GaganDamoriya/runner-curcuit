@@ -11,8 +11,8 @@ export async function analyzeNearbyPOIs(
   const [lng, lat] = startCoord;
   const radiusMeters = radiusKm * 1000;
 
-  // Overpass QL query for running-friendly POIs (simplified to avoid 406)
-  const query = `[out:json][timeout:25];(way["leisure"="park"](around:${radiusMeters},${lat},${lng});way["highway"~"path|footway"](around:${radiusMeters},${lat},${lng}););out geom;`;
+  // Overpass QL query for running-friendly POIs + water bodies to avoid
+  const query = `[out:json][timeout:25];(way["leisure"="park"](around:${radiusMeters},${lat},${lng});way["highway"~"path|footway|track|cycleway"](around:${radiusMeters},${lat},${lng});way["natural"="water"](around:${radiusMeters},${lat},${lng});way["waterway"](around:${radiusMeters},${lat},${lng});relation["natural"="water"](around:${radiusMeters},${lat},${lng});way["highway"~"residential|pedestrian|living_street"]["motor_vehicle"!="yes"](around:${radiusMeters},${lat},${lng}););out geom;`;
 
   try {
     const response = await fetch(OVERPASS_API, {
@@ -26,17 +26,14 @@ export async function analyzeNearbyPOIs(
     }
 
     const data: OSMOverpassResponse = await response.json();
-    return parseOSMFeatures(data, startCoord);
+    return parseOSMFeatures(data);
   } catch (error) {
     console.error('OSM query failed:', error);
     return []; // Graceful fallback - will use geometric patterns
   }
 }
 
-function parseOSMFeatures(
-  data: OSMOverpassResponse,
-  startCoord: [number, number]
-): OSMFeature[] {
+function parseOSMFeatures(data: OSMOverpassResponse): OSMFeature[] {
   const features: OSMFeature[] = [];
 
   for (const element of data.elements) {
@@ -60,6 +57,7 @@ function parseOSMFeatures(
     let type: OSMFeature['type'] = 'trail';
     let perimeter: number | undefined;
     let length: number | undefined;
+    let shouldAvoid = false;
 
     if (element.tags?.leisure === 'park') {
       type = 'park';
@@ -67,8 +65,22 @@ function parseOSMFeatures(
     } else if (element.tags?.sport === 'running') {
       type = 'track';
       length = calculateLength(coords);
-    } else if (element.tags?.natural === 'water') {
-      type = 'waterfront';
+    } else if (
+      element.tags?.natural === 'water' ||
+      element.tags?.waterway ||
+      (element.type === 'relation' && element.tags?.natural === 'water')
+    ) {
+      type = 'water';
+      perimeter = calculatePerimeter(coords);
+      shouldAvoid = true; // Mark water bodies for avoidance
+    } else if (
+      element.tags?.highway &&
+      ['residential', 'pedestrian', 'living_street'].includes(
+        element.tags.highway
+      ) &&
+      element.tags?.motor_vehicle !== 'yes'
+    ) {
+      type = 'safe-road';
       length = calculateLength(coords);
     } else {
       type = 'trail';
@@ -83,6 +95,7 @@ function parseOSMFeatures(
       coordinates: coords,
       perimeter,
       length,
+      shouldAvoid,
     });
   }
 

@@ -1,11 +1,13 @@
-import { bearing as turfBearing } from '@turf/turf';
+import { bearing as turfBearing, distance as turfDistance } from '@turf/turf';
 import { point } from '@turf/helpers';
 import { RouteData } from '@/types/route';
-import { RouteMetrics } from '@/types/route-optimizer';
+import { RouteMetrics, OSMFeature } from '@/types/route-optimizer';
 
 export function calculateRouteMetrics(
   route: RouteData,
-  targetDistanceKm: number
+  targetDistanceKm: number,
+  heatIndex?: number,
+  waterFeatures: OSMFeature[] = []
 ): RouteMetrics {
   const distanceAccuracy = calculateDistanceAccuracy(
     route.distanceKm,
@@ -13,19 +15,35 @@ export function calculateRouteMetrics(
   );
 
   const turnCount = countSignificantTurns(route.coordinates);
-  const elevationGain = 0; // TODO: Calculate from elevation data
+  const elevationGain = route.elevationGain;
   const scenicScore = 50; // TODO: Calculate from waytype data
 
-  // Overall score weighted by importance - HEAVILY penalize turns!
+  // Heat index penalty (0-30 points penalty based on severity)
+  let heatPenalty = 0;
+  if (heatIndex) {
+    if (heatIndex > 40) heatPenalty = 30; // Extreme heat
+    else if (heatIndex > 35) heatPenalty = 20; // High heat
+    else if (heatIndex > 30) heatPenalty = 10; // Warm conditions
+  }
+
+  // Water proximity penalty (0-40 points)
+  const waterPenalty = calculateWaterProximityPenalty(
+    route.coordinates,
+    waterFeatures
+  );
+
+  // Rebalanced scoring weights
   const distanceScore = Math.max(0, 100 - distanceAccuracy);
-  const turnScore = Math.max(0, 100 - turnCount * 5); // Penalty: 5 points per turn (was 2)
+  const turnScore = Math.max(0, 100 - turnCount * 3); // Reduced from 5 to 3
   const surfaceScore = route.surfaceScore;
 
   const overallScore =
-    0.3 * distanceScore +
-    0.5 * turnScore +      // Increased from 0.3 to 0.5 - turns now MOST important!
-    0.15 * surfaceScore +  // Decreased from 0.2
-    0.05 * scenicScore;    // Decreased from 0.1
+    0.35 * distanceScore +      // Increased from 0.3
+    0.30 * turnScore +          // Decreased from 0.5
+    0.20 * surfaceScore +       // Increased from 0.15
+    0.15 * scenicScore -        // Increased from 0.05
+    (heatPenalty * 0.2) -       // Reduced weight
+    (waterPenalty * 0.5);       // HIGH penalty for water proximity
 
   return {
     distanceKm: route.distanceKm,
@@ -35,7 +53,9 @@ export function calculateRouteMetrics(
     surfaceScore: route.surfaceScore,
     elevationGain,
     scenicScore,
-    overallScore: Math.round(overallScore),
+    heatIndex,
+    waterProximity: waterPenalty,
+    overallScore: Math.max(0, Math.min(100, Math.round(overallScore))),
   };
 }
 
@@ -72,4 +92,44 @@ function countSignificantTurns(
   }
 
   return turnCount;
+}
+
+/**
+ * Calculate penalty for routes that get close to water bodies
+ */
+function calculateWaterProximityPenalty(
+  routeCoords: [number, number][],
+  waterFeatures: OSMFeature[]
+): number {
+  if (waterFeatures.length === 0) return 0;
+
+  let penalty = 0;
+  const dangerThreshold = 0.05; // 50 meters (in km)
+  const warningThreshold = 0.2; // 200 meters (in km)
+
+  // Sample route points (every 10th to avoid performance issues)
+  const sampleRate = Math.max(1, Math.floor(routeCoords.length / 50));
+
+  for (let i = 0; i < routeCoords.length; i += sampleRate) {
+    const routePoint = routeCoords[i];
+
+    // Find closest water body
+    const closestWaterDist = Math.min(
+      ...waterFeatures
+        .filter((f) => f.type === 'water' && f.location)
+        .map((f) =>
+          turfDistance(point(routePoint), point(f.location), {
+            units: 'kilometers',
+          })
+        )
+    );
+
+    if (closestWaterDist < dangerThreshold) {
+      penalty += 10; // Major penalty for very close proximity
+    } else if (closestWaterDist < warningThreshold) {
+      penalty += 3; // Minor penalty for nearby water
+    }
+  }
+
+  return Math.min(40, penalty); // Cap at 40 points
 }

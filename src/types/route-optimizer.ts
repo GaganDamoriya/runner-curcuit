@@ -15,6 +15,8 @@ export interface RouteMetrics {
   surfaceScore: number;
   elevationGain: number;
   scenicScore: number; // 0-100
+  heatIndex?: number; // Celsius, calculated from weather data
+  waterProximity?: number; // 0-40 penalty for water proximity
   overallScore: number; // 0-100
 }
 
@@ -34,12 +36,13 @@ export interface StartPointSuggestion {
 
 export interface OSMFeature {
   id: string;
-  type: 'park' | 'trail' | 'track' | 'waterfront';
+  type: 'park' | 'trail' | 'track' | 'waterfront' | 'water' | 'safe-road';
   name: string;
   location: [number, number];
-  coordinates?: [number, number][]; // for trails/waterfronts
+  coordinates?: [number, number][]; // for trails/waterfronts/water bodies
   perimeter?: number; // for parks
   length?: number; // for trails
+  shouldAvoid?: boolean; // Flag for features to avoid (e.g., water bodies)
 }
 
 export interface OSMOverpassResponse {
