@@ -1,5 +1,5 @@
 import { RouteData } from './route';
-import { RouteMetrics } from './route-optimizer';
+import { RouteMetrics, OSMFeature } from './route-optimizer';
 import { WeatherAdviceResponse } from './weather';
 
 export interface GenerateRouteRequest {
@@ -7,6 +7,7 @@ export interface GenerateRouteRequest {
   routeType: 'loop' | 'point-to-point';
   startCoord: [number, number];
   cityPreference: 'stay-in-city' | 'can-leave-city';
+  timeOfDay?: number; // NEW: 0-23 hour for lighting importance
 }
 
 export interface GenerateRouteResponse {
@@ -14,6 +15,7 @@ export interface GenerateRouteResponse {
   data: RouteData;
   metrics?: RouteMetrics;
   strategyUsed?: string;
+  waterPoints?: OSMFeature[]; // NEW (Phase 4): For 15km+ routes
 }
 
 export interface GenerateRouteError {

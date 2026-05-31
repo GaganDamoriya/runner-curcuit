@@ -10,6 +10,9 @@ import {
   isNCRLocation,
   generateStartTimeRecommendations,
 } from '@/lib/weather';
+import { fetchWAQI, getAQICategory } from '@/lib/waqi';
+import { fetchUV, getUVCategory } from '@/lib/openuv';
+import { fetchWind, getWindDirectionLabel, getWindCategory } from '@/lib/windy';
 
 export async function GET(request: NextRequest) {
   try {
@@ -60,18 +63,27 @@ export async function GET(request: NextRequest) {
     const isNCR = isNCRLocation(lat, lng);
     console.log(`[Weather Advice] NCR location: ${isNCR}`);
 
-    // Fetch weather data in parallel
-    const [current, hourlyForecast, aqiData] = await Promise.all([
+    // Fetch weather data in parallel (Phase 2: added UV, Wind, WAQI)
+    const [current, hourlyForecast, aqiData, uvData, windData] = await Promise.all([
       fetchCurrentWeather(lat, lng),
       fetchHourlyForecast(lat, lng, timeRangeHours),
-      isNCR ? fetchAQI(lat, lng) : Promise.resolve(null),
+      // Use WAQI for India (more accurate), fallback to OpenWeatherMap for other regions
+      isNCR ? fetchWAQI(lat, lng).then(data => data ? { ...data, label: getAQICategory(data.aqi).label } : null) : fetchAQI(lat, lng),
+      fetchUV(lat, lng), // NEW: UV index
+      fetchWind(lat, lng), // NEW: Wind direction
     ]);
 
     console.log(
       `[Weather Advice] Current: ${current.temp}°C, Forecast: ${hourlyForecast.length} intervals`
     );
     if (isNCR && aqiData) {
-      console.log(`[Weather Advice] AQI: ${aqiData.aqi} (${aqiData.label})`);
+      console.log(`[Weather Advice] AQI: ${aqiData.aqi} (${aqiData.label})${aqiData.station ? ` from ${aqiData.station}` : ''}`);
+    }
+    if (uvData) {
+      console.log(`[Weather Advice] UV Index: ${uvData.uv} (${getUVCategory(uvData.uv).label})`);
+    }
+    if (windData) {
+      console.log(`[Weather Advice] Wind: ${windData.speed.toFixed(1)}m/s from ${getWindDirectionLabel(windData.direction)}`);
     }
 
     // Attach AQI to hourly data if available
@@ -91,14 +103,25 @@ export async function GET(request: NextRequest) {
       `[Weather Advice] Generated ${recommendations.length} recommendations, best: ${recommendations[0]?.timeLabel} (score: ${recommendations[0]?.score})`
     );
 
-    // Generate critical alerts
+    // Generate critical alerts (Phase 2: added UV alerts)
     const alerts: string[] = [];
     if (current.temp > 38) {
       alerts.push('Extreme heat advisory in effect');
     }
-    if (isNCR && aqiData && aqiData.aqi >= 4) {
+    if (isNCR && aqiData && aqiData.aqi >= 200) {
+      // WAQI uses 0-500 scale, 200+ is unhealthy
       alerts.push(
         'Air quality unhealthy - outdoor exercise not recommended'
+      );
+    } else if (!isNCR && aqiData && aqiData.aqi >= 4) {
+      // OpenWeatherMap uses 1-5 scale
+      alerts.push(
+        'Air quality unhealthy - outdoor exercise not recommended'
+      );
+    }
+    if (uvData && uvData.uv >= 8) {
+      alerts.push(
+        `Very high UV index (${uvData.uv}) - Apply SPF 50+ sunscreen and avoid midday sun`
       );
     }
 
@@ -108,7 +131,17 @@ export async function GET(request: NextRequest) {
         location: { lat, lng, isNCR },
         current: {
           ...current,
-          aqi: aqiData || undefined,
+          aqi: (aqiData && 'o3' in aqiData) ? aqiData : undefined,
+          uv: uvData ? {
+            ...uvData,
+            category: getUVCategory(uvData.uv).label,
+            recommendation: getUVCategory(uvData.uv).recommendation,
+          } : undefined,
+          wind: windData ? {
+            ...windData,
+            directionLabel: getWindDirectionLabel(windData.direction),
+            category: getWindCategory(windData.speed).label,
+          } : undefined,
         },
         hourlyForecast: enrichedHourly,
         recommendations,

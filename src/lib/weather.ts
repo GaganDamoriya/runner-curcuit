@@ -119,6 +119,7 @@ export async function fetchCurrentWeather(
     humidity: data.main.humidity,
     description: data.weather[0].description,
     icon: data.weather[0].icon,
+    rain: data.rain || undefined, // Phase 4: Include rain data
   };
 }
 

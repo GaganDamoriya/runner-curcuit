@@ -1,19 +1,21 @@
 'use client';
 
 import { useState } from 'react';
-import { Download, Navigation, Clock, Route, TrendingUp, Navigation2, Mountain, Share2, Check } from 'lucide-react';
+import { Download, Navigation, Clock, Route, TrendingUp, Navigation2, Mountain, Share2, Check, Lightbulb, Droplet, Trees, AlertTriangle } from 'lucide-react';
 import { RouteData } from '@/types/route';
-import { RouteMetrics } from '@/types/route-optimizer';
+import { RouteMetrics, OSMFeature } from '@/types/route-optimizer';
 import { geojsonToGpx, downloadGpx, googleMapsUrl } from '@/lib/gpx';
 import { encodeRouteToURL } from '@/lib/url-utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { WaterPointMap } from './WaterPointMap';
 
 interface RouteStatsProps {
   route: RouteData;
   metrics?: RouteMetrics;
   strategyUsed?: string;
+  waterPoints?: OSMFeature[]; // Phase 4.6: Water fountains for long runs
   preferences?: {
     distanceKm: number;
     routeType: 'loop' | 'point-to-point';
@@ -22,7 +24,7 @@ interface RouteStatsProps {
   };
 }
 
-export function RouteStats({ route, metrics, strategyUsed, preferences }: RouteStatsProps) {
+export function RouteStats({ route, metrics, strategyUsed, waterPoints, preferences }: RouteStatsProps) {
   const [shareSuccess, setShareSuccess] = useState(false);
   const handleGpxDownload = () => {
     const gpx = geojsonToGpx(
@@ -92,6 +94,7 @@ export function RouteStats({ route, metrics, strategyUsed, preferences }: RouteS
   const elevationDifficulty = getElevationDifficulty(route.elevationGain);
 
   return (
+    <>
     <Card className="mt-6">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
@@ -184,6 +187,91 @@ export function RouteStats({ route, metrics, strategyUsed, preferences }: RouteS
               </div>
             )}
 
+            {/* Safety Metrics */}
+            {metrics.safetyMetrics && (
+              <div className="space-y-3 pt-4 border-t border-border">
+                <div className="text-sm font-medium text-foreground mb-3">Safety Features</div>
+
+                {/* Lighting Score */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-md bg-yellow-500/10 flex items-center justify-center">
+                        <Lightbulb className="h-4 w-4 text-yellow-600 dark:text-yellow-500" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">Lighting</span>
+                    </div>
+                    <span className="text-sm font-medium">
+                      {metrics.safetyMetrics.lightingScore}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-yellow-500 dark:bg-yellow-600 transition-all duration-500"
+                      style={{ width: `${metrics.safetyMetrics.lightingScore}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Water Access Score */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-md bg-blue-500/10 flex items-center justify-center">
+                        <Droplet className="h-4 w-4 text-blue-600 dark:text-blue-500" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">Water Access</span>
+                    </div>
+                    <span className="text-sm font-medium">
+                      {metrics.safetyMetrics.waterAccessScore}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 dark:bg-blue-600 transition-all duration-500"
+                      style={{ width: `${metrics.safetyMetrics.waterAccessScore}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Green Cover Score */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-6 w-6 rounded-md bg-green-500/10 flex items-center justify-center">
+                        <Trees className="h-4 w-4 text-green-600 dark:text-green-500" />
+                      </div>
+                      <span className="text-sm text-muted-foreground">Green Cover</span>
+                    </div>
+                    <span className="text-sm font-medium">
+                      {metrics.safetyMetrics.greenCoverScore}%
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-green-500 dark:bg-green-600 transition-all duration-500"
+                      style={{ width: `${metrics.safetyMetrics.greenCoverScore}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Hazard Warning */}
+                {metrics.safetyMetrics.hazardPenalty > 10 && (
+                  <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <AlertTriangle className="h-4 w-4 text-destructive mt-0.5 shrink-0" />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-destructive">Route Advisory</div>
+                      <div className="text-caption text-destructive/80 mt-0.5">
+                        {metrics.safetyMetrics.hazardPenalty > 30
+                          ? 'High hazard risk detected (construction zones or heavy traffic)'
+                          : 'Moderate hazards detected along this route'}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Overall Score */}
             <div className="pt-4 border-t border-border">
               <div className="flex items-center justify-between">
@@ -241,5 +329,11 @@ export function RouteStats({ route, metrics, strategyUsed, preferences }: RouteS
         </div>
       </CardContent>
     </Card>
+
+    {/* Phase 4.6: Water Point Map for long runs */}
+    {waterPoints && waterPoints.length > 0 && (
+      <WaterPointMap waterPoints={waterPoints} distanceKm={route.distanceKm} />
+    )}
+    </>
   );
 }

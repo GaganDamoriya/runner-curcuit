@@ -31,11 +31,11 @@ export async function POST(request: NextRequest) {
     console.log('[Route Optimizer] Step 1: Analyzing nearby POIs and hazards...');
     const osmFeatures = await analyzeNearbyPOIs(body.startCoord, 3);
 
-    // Separate water bodies from safe features
+    // Separate hazards from safe features
     const waterFeatures = osmFeatures.filter((f) => f.type === 'water');
-    const safeFeatures = osmFeatures.filter((f) => f.type !== 'water');
+    const safeFeatures = osmFeatures.filter((f) => !f.shouldAvoid);
 
-    console.log(`[Route Optimizer] Found ${safeFeatures.length} POIs, ${waterFeatures.length} water bodies to avoid`);
+    console.log(`[Route Optimizer] Found ${safeFeatures.length} POIs, ${waterFeatures.length} water bodies, ${osmFeatures.length} total OSM features`);
 
     // Step 2: Generate smart waypoint strategies (using safe features only)
     console.log('[Route Optimizer] Step 2: Generating waypoint strategies...');
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     for (const strategy of strategies) {
       console.log(`[Route Optimizer] Testing strategy: ${strategy.name}`);
-      const refined = await refineRoute(strategy, body.distanceKm, 6, waterFeatures);
+      const refined = await refineRoute(strategy, body.distanceKm, 6, osmFeatures, undefined, body.timeOfDay);
       if (refined) {
         const waterInfo = refined.metrics.waterProximity ? `, water penalty: ${refined.metrics.waterProximity}` : '';
         console.log(`[Route Optimizer] ✓ ${strategy.name}: ${refined.route.distanceKm.toFixed(2)}km (${refined.metrics.distanceAccuracy.toFixed(1)}% error, ${refined.metrics.turnCount} turns${waterInfo})`);
@@ -127,11 +127,21 @@ export async function POST(request: NextRequest) {
     bestRoute.route.coordinates = simplifiedCoords;
     console.log(`[Route Optimizer] Simplified: ${originalCoordCount} → ${simplifiedCoords.length} points (-${Math.round((1 - simplifiedCoords.length/originalCoordCount) * 100)}%)`);
 
+    // Phase 4.6: Extract water points for long runs (15km+)
+    const waterPoints = bestRoute.route.distanceKm >= 15
+      ? osmFeatures.filter((f) => f.type === 'fountain')
+      : undefined;
+
+    if (waterPoints && waterPoints.length > 0) {
+      console.log(`[Route Optimizer] Long run detected (${bestRoute.route.distanceKm.toFixed(1)}km) - including ${waterPoints.length} water points`);
+    }
+
     return NextResponse.json<GenerateRouteResponse>({
       success: true,
       data: bestRoute.route,
       metrics: bestRoute.metrics,
       strategyUsed: bestRoute.strategy.name,
+      waterPoints, // Phase 4.6
     });
   } catch (error) {
     const err = error as Error & { status?: number };

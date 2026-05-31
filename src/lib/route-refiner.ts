@@ -1,20 +1,23 @@
-import { distance as turfDistance, bearing as turfBearing, destination } from '@turf/turf';
-import { point } from '@turf/helpers';
+import { distance as turfDistance, bearing as turfBearing, destination, point } from '@turf/turf';
 import { WaypointStrategy, RouteCandidate, OSMFeature } from '@/types/route-optimizer';
 import { calculateSurfaceScore, calculateElevationMetrics } from './ors';
 import { calculateRouteMetrics } from './route-metrics';
 import { RouteData } from '@/types/route';
+import { fetchElevationProfile, getElevationStats } from './opentopo';
 
 export async function refineRoute(
   strategy: WaypointStrategy,
   targetDistanceKm: number,
   maxAttempts: number = 6,
-  waterFeatures: OSMFeature[] = []
+  osmFeatures: OSMFeature[] = [],
+  heatIndex?: number,
+  timeOfDay?: number
 ): Promise<RouteCandidate | null> {
   let currentWaypoints = strategy.waypoints;
   let attempt = 0;
 
-  // Create avoidance polygons from water bodies
+  // Create avoidance polygons from water bodies and construction zones
+  const waterFeatures = osmFeatures.filter((f) => f.shouldAvoid === true);
   const avoidPolygons = createAvoidPolygons(waterFeatures);
 
   while (attempt < maxAttempts) {
@@ -43,7 +46,25 @@ export async function refineRoute(
         console.log(`  ✓ Success! Within ±10% tolerance`);
 
         // SUCCESS! Build route candidate
-        const elevationMetrics = calculateElevationMetrics(elevationData);
+        let elevationMetrics = calculateElevationMetrics(elevationData);
+
+        // Phase 3: Fallback to OpenTopoData if ORS elevation is missing
+        if (elevationMetrics.elevationGain === 0) {
+          console.log('  ORS elevation missing, trying OpenTopoData fallback...');
+          const coords = feature.geometry.coordinates as [number, number][];
+          const elevations = await fetchElevationProfile(coords);
+
+          if (elevations.length > 0) {
+            const stats = getElevationStats(elevations);
+            elevationMetrics = {
+              elevationGain: stats.gain,
+              maxElevation: stats.max,
+              minElevation: stats.min,
+            };
+            console.log(`  ✓ OpenTopoData: ${stats.gain}m gain (${stats.min}m - ${stats.max}m)`);
+          }
+        }
+
         const route: RouteData = {
           geojson: feature.geometry,
           distanceKm: actualDistance,
@@ -55,7 +76,7 @@ export async function refineRoute(
           minElevation: elevationMetrics.minElevation,
         };
 
-        const metrics = calculateRouteMetrics(route, targetDistanceKm, undefined, waterFeatures);
+        const metrics = calculateRouteMetrics(route, targetDistanceKm, osmFeatures, heatIndex, timeOfDay);
 
         return {
           strategy: {
